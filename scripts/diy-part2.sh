@@ -34,10 +34,14 @@ THIRD_PARTY_PACKAGES=(
     # ddnsto(后端服务)来自 nas-packages 仓库
     "ddnsto|https://github.com/linkease/nas-packages|network/services/ddnsto"
 
-    # ---- OFA(OpenAppFilter 应用过滤) ----
-    # 说明: LEDE luci feed 自带 OFA 的 LuCI 界面(luci-app-appfilter),
-    #       但其依赖的用户态后端(appfilter)与内核模块(oaf)在 LEDE 源码及
-    #       feeds 中均不存在, 需从 OFA 官方仓库只拉取这两个插件目录补齐
+    # ---- OFA(OpenAppFilter 应用过滤)后端 ----
+    # 说明: OFA 全套组件均由 LEDE feeds 自带 ——
+    #       LuCI 界面: feeds/luci 的 luci-app-appfilter;
+    #       用户态后端 appfilter 与内核模块 kmod-oaf:
+    #       feeds/packages 的 open-app-filter 目录(目录名与包名不一致,
+    #       检测函数已通过 Makefile 包定义匹配兜住)。
+    #       以下条目仅作备用源: 若未来 LEDE 移除 open-app-filter,
+    #       脚本将自动从 OFA 官方仓库只拉取所需插件目录补齐
     "appfilter|https://github.com/destan19/OpenAppFilter|open-app-filter"
     "oaf|https://github.com/destan19/OpenAppFilter|oaf"
 
@@ -54,19 +58,33 @@ THIRD_PARTY_PACKAGES=(
 
 # ----------------------------------------------------------------------------
 # 函数: 检查软件包是否已存在于 LEDE 源码或已安装的 feeds 中
-# 参数: $1 = 软件包名(与包目录名一致, 精确匹配)
+# 参数: $1 = 软件包名(精确匹配)
 # 返回: 0 = 存在(无需第三方拉取), 1 = 不存在(需要第三方拉取)
-# 判定规则:
-#   1. 排除第三方插件目录(thirdparty), 避免已拉取的包干扰判定;
-#   2. 匹配到的目录必须包含 Makefile 才是真正的软件包目录,
-#      避免误匹配插件包内部的同名子目录(如 luasrc/view/<包名>)
+# 判定规则(双重匹配, 任一命中即视为已存在):
+#   1. 目录名匹配: 存在与包名同名的目录且包含 Makefile
+#      (排除第三方目录 thirdparty, 并要求目录含 Makefile,
+#       避免误匹配插件包内部的同名子目录, 如 luasrc/view/<包名>);
+#   2. 包定义匹配: Makefile 中存在该包的定义
+#      (define Package/<包名> / define KernelPackage/<包名> /
+#       call BuildPackage,<包名> / call KernelPackage,<包名>)
+#      用于兜住"目录名与包名不一致"的情况 —— 例如 LEDE feeds 自带的
+#      open-app-filter 目录内同时定义了 appfilter 与 kmod-oaf 两个包,
+#      仅按目录名查找会漏判, 导致第三方重复拉取同名包,
+#      引发 Kconfig 递归依赖与内核包编译失败
 # ----------------------------------------------------------------------------
 package_exists_in_lede() {
-    local dir
+    local pkg="$1" dir
+    # 方式1: 目录名匹配(目录须含 Makefile 才是真正的软件包目录)
     while IFS= read -r dir; do
         [ -f "$dir/Makefile" ] && return 0
     done < <(find "$OPENWRT_DIR/package" "$OPENWRT_DIR/feeds" \
-             -maxdepth 5 -type d -name "$1" -not -path "*thirdparty*" -print 2>/dev/null)
+             -maxdepth 5 -type d -name "$pkg" -not -path "*thirdparty*" -print 2>/dev/null)
+    # 方式2: Makefile 包定义匹配(排除第三方目录与 feeds 的 .git 目录)
+    grep -rqsE \
+        "^define (Kernel)?Package/$pkg(/|\$)|\((call (Build|Kernel)Package,$pkg)\)" \
+        --include="Makefile" --include="*.mk" \
+        --exclude-dir=thirdparty --exclude-dir=.git \
+        "$OPENWRT_DIR/package" "$OPENWRT_DIR/feeds" 2>/dev/null && return 0
     return 1
 }
 

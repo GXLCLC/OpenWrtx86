@@ -199,14 +199,24 @@ jobs:
       # 目的: 将仓库内置的 config 配置文件复制为源码 .config,
       #       通过 make defconfig 非交互式自动补全全部依赖项,
       #       使用者只需修改 config/x86_64.config 即可灵活增减插件
+      # 防护: 检测 Kconfig 递归依赖(通常由同名包重复定义引发),
+      #       一经发现立即终止, 避免带病进入编译阶段浪费数小时后失败
       # ---------------------------------------------------------------------
       - name: 11. 加载 config 配置并展开依赖(make defconfig)
         run: |
           cd "$OPENWRT_DIR"
           # 载入仓库内置的编译配置
           cp -f "../$CONFIG_FILE" .config
-          # 非交互式展开配置依赖(无需 SSH 登录或 menuconfig 操作)
-          make defconfig
+          # 非交互式展开配置依赖(无需 SSH 登录或 menuconfig 操作), 输出存日志备查
+          make defconfig 2>&1 | tee /tmp/defconfig.log
+          # 校验 make 本身的退出码(管道会掩盖失败, 需检查 PIPESTATUS)
+          [ "${PIPESTATUS[0]}" -eq 0 ] || { echo '错误: make defconfig 执行失败, 终止编译'; exit 1; }
+          # 防护: 检测 Kconfig 递归依赖(同名包重复定义的典型症状)
+          if grep -q 'recursive dependency' /tmp/defconfig.log; then
+            echo '错误: 检测到 Kconfig 递归依赖(疑似同名软件包重复定义), 终止编译'
+            grep 'recursive dependency\|selected by' /tmp/defconfig.log
+            exit 1
+          fi
           # 校验关键配置是否生效(防止配置被静默丢弃)
           grep -q '^CONFIG_TARGET_x86_64=y' .config || { echo '错误: X86_64 目标配置未生效, 终止编译'; exit 1; }
           grep -q '^CONFIG_TARGET_ROOTFS_SQUASHFS=y' .config || { echo '错误: squashfs 镜像配置未生效, 终止编译'; exit 1; }

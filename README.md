@@ -69,11 +69,11 @@
 | luci-app-easytier | [EasyTier/luci-app-easytier](https://github.com/EasyTier/luci-app-easytier) | `luci-app-easytier` |
 | luci-app-ddnsto | [linkease/nas-packages-luci](https://github.com/linkease/nas-packages-luci) | `luci/luci-app-ddnsto` |
 | ddnsto | [linkease/nas-packages](https://github.com/linkease/nas-packages) | `network/services/ddnsto` |
-| appfilter / oaf | [destan19/OpenAppFilter](https://github.com/destan19/OpenAppFilter) | `open-app-filter` / `oaf` |
+| (备用源) appfilter / oaf | [destan19/OpenAppFilter](https://github.com/destan19/OpenAppFilter) | `open-app-filter` / `oaf` |
 | (备用源) smartdns / adguardhome / argon 系列等 | [kenzok8/openwrt-packages](https://github.com/kenzok8/openwrt-packages) | 对应同名目录 |
 
-> 说明: SmartDNS、AdGuardHome、Mwan3、Turbo ACC、带宽监控、Argon 主题等当前均由 LEDE feeds 自带，kenzok8 仓库仅作为 LEDE 未来移除对应包时的备用源(自动按需启用，无需修改脚本)。
-> OFA 应用过滤的 LuCI 界面(luci-app-appfilter)由 LEDE feeds 提供，但其用户态后端(appfilter)与内核模块(oaf)LEDE 缺失，故从 OFA 官方仓库按需拉取补齐。
+> 说明: 当前 SmartDNS、AdGuardHome、Mwan3、Turbo ACC、带宽监控、Argon 主题，以及 OFA 全套(LuCI 界面 luci-app-appfilter、用户态后端 appfilter、内核模块 kmod-oaf，位于 feeds 的 `open-app-filter` 目录)均由 LEDE feeds 自带；destan19 与 kenzok8 仓库仅作为 LEDE 未来移除对应包时的备用源(自动按需启用，无需修改脚本)。
+> 软件包存在性检测采用「目录名 + Makefile 包定义」双重匹配，可正确识别目录名与包名不一致的情况(如 `open-app-filter` 目录内的 appfilter/kmod-oaf 包)，避免第三方重复拉取同名包引发 Kconfig 递归依赖与内核编译失败。
 
 ## 工作流说明
 

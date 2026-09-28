@@ -1,5 +1,0 @@
-actions-toolkit
-pygit2
-pyyaml
-zstandard
-httpx

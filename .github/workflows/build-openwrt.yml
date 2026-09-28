@@ -1,190 +1,301 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 沉默の金 <cmzj@cmzj.org>
-# SPDX-License-Identifier: MIT
+# ============================================================================
+# OpenWrt(LEDE) 云编译工作流 —— X86_64 专用
+#
+# 功能说明:
+#   1. 基于 Ubuntu 22.04 运行器, 全自动拉取 LEDE(coolsnowwolf/lede) 最新源码
+#   2. 按"仅补缺"原则从第三方仓库只克隆所需插件目录(不整仓拉取)
+#   3. 全程自动化编译, 无任何交互式 SSH/menuconfig 操作
+#   4. 编译产出 squashfs 格式 X86_64 combined IMG 镜像(rootfs_data 预留约 2G)
+#   5. 编译成功后自动发布固件到 GitHub Releases
+#   6. 任一步骤出错立即终止整个工作流
+# ============================================================================
 
-name: Build OpenWrt-K
+name: OpenWrt 云编译(X86_64)
+
+# ----------------------------------------------------------------------------
+# 触发条件:
+#   workflow_dispatch —— 在 Actions 页面手动触发编译
+#   push             —— 以下相关文件变更时自动触发编译
+# ----------------------------------------------------------------------------
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 4 * * *'
   push:
+    branches: [ main ]
     paths:
-      - '.github/**'
-      - 'files/**'
-      - 'build_helper/**'
+      - '.github/workflows/**'
       - 'config/**'
+      - 'files/**'
+      - 'scripts/**'
 
-      - '!.gitignore'
-      - '!LICENSE'
-      - '!README.md'
-      - '!img/**'
-
+# ----------------------------------------------------------------------------
+# 权限: 需要写入仓库内容权限, 用于自动创建 Releases 并上传固件
+# ----------------------------------------------------------------------------
 permissions:
-  actions: write
   contents: write
-  discussions: write
+
+# ----------------------------------------------------------------------------
+# 全局环境变量(如需更换源码仓库/分支/配置文件, 修改此处即可)
+# ----------------------------------------------------------------------------
 env:
-  GITHUB_TOKEN: ${{ github.token }}
-  BUILD_HELPER_DEBUG: true
+  TZ: Asia/Shanghai                                 # 时区: 影响编译日期与Release时间戳
+  REPO_URL: https://github.com/coolsnowwolf/lede    # LEDE 源码仓库地址
+  REPO_BRANCH: master                               # LEDE 源码分支(最新源码)
+  OPENWRT_DIR: openwrt                              # 源码存放目录(相对仓库根)
+  CONFIG_FILE: config/x86_64.config                 # 编译配置文件(使用者可自行增减插件)
+
 jobs:
 
-  prepare:
-    outputs:
-      matrix: ${{ steps.run.outputs.matrix }}
+  build:
+    name: 编译并发布 X86_64 固件
     runs-on: ubuntu-22.04
-    name: 规划与准备
+
     steps:
 
-      - uses: actions/checkout@v5
-      - name: 建立环境
-        uses: ./.github/action/prepare
+      # ---------------------------------------------------------------------
+      # 步骤1: 检出本仓库代码(获取 config 配置、scripts 脚本、files 默认设置)
+      # ---------------------------------------------------------------------
+      - name: 1. 检出本仓库代码
+        uses: actions/checkout@v4
 
-      - name: 准备
-        id: run
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task prepare
+      # ---------------------------------------------------------------------
+      # 步骤2: Runner 磁盘扩容
+      # 目的: 删除 GitHub 托管运行器预装的大型软件(Android SDK、.NET、GHC 等),
+      #       释放约 20GB+ 磁盘空间, 规避 LEDE 编译过程中磁盘空间不足的问题
+      # ---------------------------------------------------------------------
+      - name: 2. Runner 磁盘扩容(清理预装软件)
+        run: |
+          # 删除编译 OpenWrt 用不到的大型预装目录
+          sudo rm -rf /usr/local/lib/android        # Android SDK
+          sudo rm -rf /usr/share/dotnet             # .NET 运行时
+          sudo rm -rf /usr/local/.ghcup             # GHCup(Haskell)
+          sudo rm -rf /opt/ghc                      # GHC 编译器
+          sudo rm -rf /opt/hostedtoolcache          # 托管工具缓存(CodeQL等)
+          # 清理 Docker 镜像缓存(存在 Docker 环境时)
+          sudo docker image prune -af > /dev/null 2>&1 || true
+          # 清理 apt 软件源缓存
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          # 打印扩容后的磁盘可用空间
+          echo "磁盘扩容完成, 当前磁盘使用情况:"
+          df -hT /
 
-      - name: 上传
-        uses: ./../../../../../opt/OpenWrt-K/.github/action/upload
+      # ---------------------------------------------------------------------
+      # 步骤3: 安装编译依赖
+      # 目的: 安装 LEDE 官方要求的全部编译工具链与依赖库(Ubuntu 22.04)
+      # ---------------------------------------------------------------------
+      - name: 3. 安装编译依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint \
+            binutils bison build-essential ccache clang cmake cpio curl \
+            device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+            g++-multilib git gnutls-dev gperf haveged help2man intltool \
+            lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev \
+            libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
+            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm \
+            mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 \
+            python3-pip python3-ply python3-docutils python3-setuptools \
+            qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib-dev zstd
 
-  base-builds:
-    runs-on: ubuntu-22.04
-    needs: prepare
-    name: 构建工具链与内核(${{ matrix.name }})
-    strategy:
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    steps:
+      # ---------------------------------------------------------------------
+      # 步骤4: 生成本次编译的缓存标识
+      # 目的: 以"日期"作为缓存 key 的一部分, 实现缓存按天滚动更新,
+      #       配合 restore-keys 前缀回退复用最近一次的缓存
+      # ---------------------------------------------------------------------
+      - name: 4. 生成本次编译的缓存标识
+        id: date
+        run: |
+          # 缓存 key 使用的日期(每天生成新缓存)
+          echo "cache_date=$(date +%F)" >> "$GITHUB_OUTPUT"
+          # Release 标签使用的精确时间戳(精确到分钟, 避免重复)
+          echo "tag_date=$(date +%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v5
-      - name: 建立环境
-        uses: ./.github/action/prepare
-
-      - name: 准备编译
-        id: prepare
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build-prepare --config ${{ matrix.config }}
-
-      - name: 缓存toolchain
-        uses: actions/cache@v5
-        id: cache-toolchain
-        if: ${{ steps.prepare.outputs.use-cache }}
+      # ---------------------------------------------------------------------
+      # 步骤5: 恢复 LEDE 源码与 feeds 缓存
+      # 目的: 使用 actions/cache 缓存源码仓库(.git)与 feeds 目录,
+      #       缓存命中后可跳过整仓克隆, 仅做增量更新, 大幅减少重复编译耗时
+      # ---------------------------------------------------------------------
+      - name: 5. 恢复 LEDE 源码与 feeds 缓存
+        uses: actions/cache@v4
         with:
           path: |
-            ${{ steps.prepare.outputs.openwrt-path }}/staging_dir/host*
-            ${{ steps.prepare.outputs.openwrt-path }}/staging_dir/tool*
-          key: ${{ steps.prepare.outputs.toolchain-key }}
+            openwrt/.git
+            openwrt/feeds
+          key: lede-source-v1-${{ steps.date.outputs.cache_date }}
+          restore-keys: lede-source-v1-
 
-      - name: 缓存ccache
-        uses: actions/cache@v5
-        if: ${{ steps.prepare.outputs.use-cache }}
+      # ---------------------------------------------------------------------
+      # 步骤6: 拉取 LEDE 最新源码
+      # 目的: 缓存未命中时浅克隆最新源码; 缓存命中时增量拉取最新提交,
+      #       始终基于 LEDE 最新源码编译
+      # 注意: 此处不执行 git clean, 以保护已缓存的 feeds/dl 及第三方插件目录
+      # ---------------------------------------------------------------------
+      - name: 6. 拉取 LEDE 最新源码(缓存命中则增量更新)
+        run: |
+          if [ -d "$OPENWRT_DIR/.git" ]; then
+            # 缓存命中: 增量拉取最新提交并重置工作区
+            echo "检测到源码缓存, 增量更新 LEDE 源码..."
+            git -C "$OPENWRT_DIR" fetch --depth 1 origin "$REPO_BRANCH"
+            git -C "$OPENWRT_DIR" reset --hard FETCH_HEAD
+          else
+            # 首次编译: 浅克隆最新源码(--depth 1 节省时间与空间)
+            echo "无源码缓存, 完整克隆 LEDE 源码..."
+            git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$OPENWRT_DIR"
+          fi
+          # 打印当前源码版本信息
+          git -C "$OPENWRT_DIR" log -1 --format='当前 LEDE 源码版本: %h (%cd)' --date=format:'%Y-%m-%d %H:%M:%S'
+
+      # ---------------------------------------------------------------------
+      # 步骤7: 恢复 dl 下载缓存
+      # 目的: 缓存 dl 目录(编译期间下载的源码包归档),
+      #       命中后跳过大部分软件包下载, 进一步减少重复编译耗时
+      # ---------------------------------------------------------------------
+      - name: 7. 恢复 dl 下载缓存
+        uses: actions/cache@v4
         with:
-          path: ${{ steps.prepare.outputs.openwrt-path }}/.ccache
-          key: ${{ steps.prepare.outputs.cache-key }}
-          restore-keys: |
-            ${{ steps.prepare.outputs.cache-restore-key }}
+          path: openwrt/dl
+          key: lede-dl-v1-${{ steps.date.outputs.cache_date }}
+          restore-keys: lede-dl-v1-
 
-      - name: 编译
-        id: build
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task base-builds --config ${{ matrix.config }}
+      # ---------------------------------------------------------------------
+      # 步骤8: 执行自定义脚本 diy-part1 (feeds 更新前)
+      # 目的: 在 feeds 更新前对源码做自定义修改,
+      #       当前任务: 注释掉 LEDE 自带的代理类软件源(helloworld),
+      #       本仓库不集成任何代理类插件, 同时节省该源的整体拉取耗时
+      # ---------------------------------------------------------------------
+      - name: 8. 自定义修改 - feeds 更新前(diy-part1)
+        run: bash scripts/diy-part1.sh
+
+      # ---------------------------------------------------------------------
+      # 步骤9: 更新并安装 feeds
+      # 目的: 执行 feeds update && feeds install, 拉取 LEDE 官方软件源
+      #       (packages/luci/routing/telephony) 并安装到源码树,
+      #       自动处理全部软件包依赖关系
+      # ---------------------------------------------------------------------
+      - name: 9. 更新并安装 feeds(处理软件包依赖)
+        run: |
+          cd "$OPENWRT_DIR"
+          # 更新所有 feeds(缓存命中时为增量更新, 速度更快)
+          ./scripts/feeds update -a
+          # 安装所有 feeds 软件包(生成 package/feeds 软链接)
+          ./scripts/feeds install -a
+
+      # ---------------------------------------------------------------------
+      # 步骤10: 执行自定义脚本 diy-part2 (feeds 安装后)
+      # 目的: 按"仅补缺"原则处理第三方插件:
+      #       仅当 LEDE 源码/feeds 中不存在对应软件包时,
+      #       才从第三方仓库通过 sparse-checkout 只克隆所需插件目录,
+      #       不完整拉取整个仓库, 节省编译耗时
+      # ---------------------------------------------------------------------
+      - name: 10. 按需拉取第三方插件 - feeds 安装后(diy-part2)
+        run: bash scripts/diy-part2.sh
+
+      # ---------------------------------------------------------------------
+      # 步骤11: 加载 config 配置并展开依赖
+      # 目的: 将仓库内置的 config 配置文件复制为源码 .config,
+      #       通过 make defconfig 非交互式自动补全全部依赖项,
+      #       使用者只需修改 config/x86_64.config 即可灵活增减插件
+      # ---------------------------------------------------------------------
+      - name: 11. 加载 config 配置并展开依赖(make defconfig)
+        run: |
+          cd "$OPENWRT_DIR"
+          # 载入仓库内置的编译配置
+          cp -f "../$CONFIG_FILE" .config
+          # 非交互式展开配置依赖(无需 SSH 登录或 menuconfig 操作)
+          make defconfig
+          # 校验关键配置是否生效(防止配置被静默丢弃)
+          grep -q '^CONFIG_TARGET_x86_64=y' .config || { echo '错误: X86_64 目标配置未生效, 终止编译'; exit 1; }
+          grep -q '^CONFIG_TARGET_ROOTFS_SQUASHFS=y' .config || { echo '错误: squashfs 镜像配置未生效, 终止编译'; exit 1; }
+
+      # ---------------------------------------------------------------------
+      # 步骤12: 下载编译所需源码包
+      # 目的: 预下载全部软件包源码到 dl 目录(并行下载),
+      #       并清理体积异常(小于 1KB)的不完整文件, 避免编译阶段因损坏包失败
+      # ---------------------------------------------------------------------
+      - name: 12. 下载编译所需源码包
+        run: |
+          cd "$OPENWRT_DIR"
+          # 并行下载全部软件包源码
+          make download -j"$(nproc)"
+          # 删除体积异常的不完整下载文件(编译时将自动重新下载)
+          find dl -size -1024c -type f -exec rm -f {} +
+
+      # ---------------------------------------------------------------------
+      # 步骤13: 全自动编译固件
+      # 目的: 多线程编译固件(含工具链/内核/全部插件), 全程无交互;
+      #       任何编译错误将立即终止整个工作流(不重试、不忽略)
+      # ---------------------------------------------------------------------
+      - name: 13. 全自动编译固件(出错立即终止)
+        run: |
+          cd "$OPENWRT_DIR"
+          # 多线程编译(-jN 为运行器CPU核心数)
+          make -j"$(nproc)"
+
+      # ---------------------------------------------------------------------
+      # 步骤14: 整理固件输出
+      # 目的: 从编译产物中仅提取 squashfs 格式 combined IMG 镜像
+      #       (BIOS 与 EFI 两种引导的 .img.gz), 不保留 VHDX/VMDK/VDI
+      #       等其他格式镜像
+      # ---------------------------------------------------------------------
+      - name: 14. 整理固件输出(仅保留 squashfs combined IMG 镜像)
+        run: |
+          mkdir -p firmware
+          # 仅复制 squashfs combined IMG 镜像(BIOS + EFI)
+          cp -v "$OPENWRT_DIR"/bin/targets/x86/64/*squashfs-combined*.img.gz firmware/
+          # 校验至少成功产出一个固件镜像
+          ls firmware/*squashfs-combined*.img.gz > /dev/null 2>&1 || { echo '错误: 未找到固件镜像, 终止工作流'; exit 1; }
+          # 打印固件清单与体积
+          echo "本次编译固件输出:"
+          ls -lh firmware/
+
+      # ---------------------------------------------------------------------
+      # 步骤15: 生成 Release 发布说明
+      # 目的: 自动收集固件信息并生成发布说明文档(release-info.md),
+      #       内容包含: LAN IP、后台登录账号密码、内核版本、固件版本、
+      #       已安装插件清单(每行一个插件, 方便快速查阅)
+      # ---------------------------------------------------------------------
+      - name: 15. 生成 Release 发布说明(固件信息+插件清单)
+        run: bash scripts/gen-release-info.sh
+
+      # ---------------------------------------------------------------------
+      # 步骤16: 上传固件到 Actions Artifacts
+      # 目的: 将固件镜像上传为构建产物(Artifact), 保留 7 天,
+      #       作为 Releases 之外的备份下载渠道
+      # ---------------------------------------------------------------------
+      - name: 16. 上传固件到 Actions Artifacts(备份)
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-x86_64-firmware
+          path: firmware/
+          retention-days: 7
+
+      # ---------------------------------------------------------------------
+      # 步骤17: 发布固件到 GitHub Releases
+      # 目的: 编译成功后自动创建 Release, 上传全部 IMG 镜像文件,
+      #       并自动填充 release-info.md 中的固件信息与插件清单
+      # ---------------------------------------------------------------------
+      - name: 17. 发布固件到 GitHub Releases
+        uses: softprops/action-gh-release@v2
         env:
-          CACHE_HIT: ${{ steps.cache-toolchain.outputs.cache-hit }}
-
-      - name: 上传
-        if: success() || failure()
-        uses: ./../../../../../opt/OpenWrt-K/.github/action/upload
-
-  build-packages:
-    runs-on: ubuntu-22.04
-    needs: [prepare,base-builds]
-    name: 构建软件包(${{ matrix.name }})
-    strategy:
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    steps:
-
-      - uses: actions/checkout@v5
-      - name: 建立环境
-        uses: ./.github/action/prepare
-
-      - name: 准备编译
-        id: prepare
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build-prepare --config ${{ matrix.config }}
-
-      - name: 缓存ccache
-        uses: actions/cache@v5
-        if: ${{ steps.prepare.outputs.use-cache }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          path: ${{ steps.prepare.outputs.openwrt-path }}/.ccache
-          key: ${{ steps.prepare.outputs.cache-key }}
-          restore-keys: |
-            ${{ steps.prepare.outputs.cache-restore-key }}
+          tag_name: OpenWrt-LEDE-x86_64-${{ steps.date.outputs.tag_date }}
+          name: OpenWrt LEDE x86_64 固件 ${{ steps.date.outputs.tag_date }}
+          body_path: release-info.md
+          files: firmware/*
+          draft: false
+          prerelease: false
 
-      - name: 编译
-        id: build
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build_packages --config ${{ matrix.config }}
-
-      - name: 上传
-        if: success() || failure()
-        uses: ./../../../../../opt/OpenWrt-K/.github/action/upload
-
-  build-ImageBuilder:
-    runs-on: ubuntu-22.04
-    needs: [prepare,base-builds]
-    name: 构建Image Builder与内核模块(${{ matrix.name }})
-    strategy:
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    steps:
-
-      - uses: actions/checkout@v5
-      - name: 建立环境
-        uses: ./.github/action/prepare
-
-      - name: 准备编译
-        id: prepare
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build-prepare --config ${{ matrix.config }}
-
-      - name: 缓存ccache
-        uses: actions/cache@v5
-        if: ${{ steps.prepare.outputs.use-cache }}
-        with:
-          path: ${{ steps.prepare.outputs.openwrt-path }}/.ccache
-          key: ${{ steps.prepare.outputs.cache-key }}
-          restore-keys: |
-            ${{ steps.prepare.outputs.cache-restore-key }}
-
-      - name: 编译
-        id: build
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build_image_builder --config ${{ matrix.config }}
-
-      - name: 上传
-        if: success() || failure()
-        uses: ./../../../../../opt/OpenWrt-K/.github/action/upload
-
-  build-images-releases:
-    runs-on: ubuntu-22.04
-    needs: [prepare,base-builds,build-ImageBuilder,build-packages]
-    name: 构建镜像并发布(${{ matrix.name }})
-    strategy:
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
-    steps:
-
-      - uses: actions/checkout@v5
-      - name: 建立环境
-        uses: ./.github/action/prepare
-
-      - name: 准备构建
-        id: prepare
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build-prepare --config ${{ matrix.config }}
-
-      - name: 构建
-        id: build
-        working-directory: /opt/OpenWrt-K
-        run: python3 -m build_helper --task build_images_releases --config ${{ matrix.config }}
-
-      - name: 上传
-        if: success() || failure()
-        uses: ./../../../../../opt/OpenWrt-K/.github/action/upload
+      # ---------------------------------------------------------------------
+      # 步骤18: 清理编译临时产物
+      # 目的: 删除编译目录与产物目录, 使步骤5/7 的缓存保存动作
+      #       仅保存"源码(.git)+feeds+dl", 保持缓存体积精简可控
+      # ---------------------------------------------------------------------
+      - name: 18. 清理编译产物(精简缓存)
+        run: |
+          # 删除编译临时目录, 保留 .git/feeds/dl 供缓存保存
+          rm -rf "$OPENWRT_DIR/build_dir" "$OPENWRT_DIR/staging_dir" \
+                 "$OPENWRT_DIR/bin" "$OPENWRT_DIR/tmp" "$OPENWRT_DIR/logs" \
+                 "$OPENWRT_DIR/.ccache"
+          echo "编译产物清理完成, 缓存将仅保留源码/feeds/dl 目录"

@@ -1,180 +1,104 @@
-# OpenWrt-K
+# OpenWrt X86_64 云编译
 
-[![GitHub Repo stars](https://img.shields.io/github/stars/chenmozhijin/OpenWrt-K)](https://github.com/chenmozhijin/OpenWrt-K/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/chenmozhijin/OpenWrt-K)](https://github.com/chenmozhijin/OpenWrt-K/forks?include=active%2Carchived%2Cinactive%2Cnetwork&page=1&period=2y&sort_by=stargazer_counts)
-[![GitHub commit activity (branch)](https://img.shields.io/github/commit-activity/t/chenmozhijin/OpenWrt-K)](https://github.com/chenmozhijin/OpenWrt-K/commits)
-[![GitHub last commit (by committer)](https://img.shields.io/github/last-commit/chenmozhijin/OpenWrt-K)](https://github.com/chenmozhijin/OpenWrt-K/commits)
-[![Workflow Status](https://github.com/chenmozhijin/OpenWrt-K/actions/workflows/build-openwrt.yml/badge.svg)](https://github.com/chenmozhijin/OpenWrt-K/actions)
-> OpenWRT软件包与固件自动云编译
+基于 [GitHub Actions](https://github.com/features/actions) 的 OpenWrt(LEDE) 云编译仓库，全自动拉取 [coolsnowwolf/lede](https://github.com/coolsnowwolf/lede) 最新源码，仅编译 **X86_64** 架构固件，编译成功后自动发布到 GitHub Releases。
 
-## 目录
+## 固件特性
 
-[README](https://github.com/chenmozhijin/OpenWrt-K#openwrt-k):
+- **目标平台**: X86_64(Ubuntu 22.04 运行器编译，全程自动化无交互)
+- **镜像格式**: squashfs combined IMG 镜像(BIOS + EFI 双引导，gzip 压缩)，不生成 VHDX/VMDK/VDI 等其他格式
+- **可写空间**: rootfs 分区 3072MB，其中 rootfs_data(/overlay) 预留约 2GB，用于运行时安装软件包、存放缓存及保存配置
+- **驱动支持**: 内置 USB 驱动、USB 网卡驱动，同时包含英特尔(Intel)、瑞昱(Realtek)系列网卡驱动
+- **默认设置**:
+  - LAN IP: `192.168.1.1`
+  - 后台账号: `root` / 密码: `password`(首次登录后请及时修改)
+  - 默认主题: **Argon**(含 argon-config 主题设置界面)
+- **无代理插件**: 仓库不集成任何代理类软件(编译时已禁用相关软件源)
 
-1. [更新日志](https://github.com/chenmozhijin/OpenWrt-K#%E6%9B%B4%E6%96%B0%E6%97%A5%E5%BF%97)
-2. [固件介绍](https://github.com/chenmozhijin/OpenWrt-K#%E5%9B%BA%E4%BB%B6%E4%BB%8B%E7%BB%8D)
-  
-[Wiki页面](https://github.com/chenmozhijin/OpenWrt-K/wiki):
+## 内置插件清单
 
-1. [固件使用方法](https://github.com/chenmozhijin/OpenWrt-K/wiki/%E5%9B%BA%E4%BB%B6%E4%BD%BF%E7%94%A8%E6%96%B9%E6%B3%95)
-2. [仓库基本介绍](https://github.com/chenmozhijin/OpenWrt-K/wiki/%E4%BB%93%E5%BA%93%E5%9F%BA%E6%9C%AC%E4%BB%8B%E7%BB%8D)
-3. [定制编译OpenWrt固件](https://github.com/chenmozhijin/OpenWrt-K/wiki/%E5%AE%9A%E5%88%B6%E7%BC%96%E8%AF%91-OpenWrt-%E5%9B%BA%E4%BB%B6)
-4. [常见问题](https://github.com/chenmozhijin/OpenWrt-K/wiki/%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98)
+| 插件 | 说明 |
+| :--- | :--- |
+| luci-app-smartdns + smartdns | SmartDNS 高性能 DNS 分流 |
+| luci-app-adguardhome + adguardhome | AdGuardHome 全网广告过滤 |
+| luci-app-ddnsto + ddnsto | DDNSTO 远程控制 |
+| luci-app-appfilter + appfilter + kmod-oaf | OFA(OpenAppFilter) 应用过滤 |
+| luci-app-turboacc | Turbo ACC 网络加速(流量分载 + BBR) |
+| luci-app-mwan3 + mwan3 | Mwan3 多 WAN 负载均衡 |
+| luci-app-nlbwmon + nlbwmon | 带宽监控(按 IP 统计流量) |
+| luci-app-easytier + easytier | EasyTier 去中心化内网穿透组网 |
+| luci-theme-argon + luci-app-argon-config | Argon 主题(默认)及主题设置 |
 
-## 更新日志
+## 使用方法
 
-[2025/2/7]升级openwrt到v24.10.0,修复AdGuardHome规则下载错误导致其无法启动的问题,增减部分软件包
-<details><summary>增减列表</summary>
+### 直接使用
 
-1. 删除:passwall、passwall2、luci-app-rclone、luci-app-ddns、luci-app-aria2(你可以通过修改编译配置把他们加回来)
-2. 添加:luci-app-vlmcsd、luci-app-sqm、luci-app-qbittorrent
+1. 点击仓库右上角 **Fork** 将本仓库 Fork 到自己的 GitHub 账号下
+2. 进入自己 Fork 的仓库 → **Actions** 页面 → 选择 **OpenWrt 云编译(X86_64)** 工作流 → **Run workflow** 手动触发编译
+3. 等待编译完成(首次编译约 2~4 小时，后续命中缓存会明显加快)
+4. 编译成功后在仓库 **Releases** 页面下载固件镜像(`*-squashfs-combined*.img.gz`)
+5. 解压 gzip 后按需刷入:
+   - `*-squashfs-combined.img.gz` — BIOS(Legacy/MBR) 引导镜像
+   - `*-squashfs-combined-efi.img.gz` — EFI(GPT) 引导镜像
 
-</details>
-<details><summary>完整更新日志</summary>
+> 推送对 `config/`、`files/`、`scripts/`、`.github/workflows/` 的修改同样会自动触发编译。
 
-[2024/9/26] 使用python重构了编译工作流,提高了可维护性, 优化了编译流程,减少资源占用  
-[2023/7/27] 添加多配置编译支持,移动README部分内容到wiki
-</details>
+### 自定义固件(增减插件)
 
-## 固件介绍
+编辑仓库内的 [config/x86_64.config](config/x86_64.config):
 
-1. 基于OpenWrt官方源码编译
-2. 自带丰富的LuCI插件与软件包（见内置功能）
-3. 自带SmartDNS+AdGuard Home配置（AdGuard Home 默认密码：```password```）
-4. 随固件编译几乎全部kmod（无sfe），拒绝kernel版本不兼容(kmod在Releases allkmod.zip中，建议与固件一同下载)
-5. 固件自带OpenWrt-K工具支持升级官方源没有的软件包（使用```openwrt-k```命令）
-6. 提供多种格式固件以应对不同需求
+- **增加插件**: 添加一行 `CONFIG_PACKAGE_插件名=y`
+- **移除插件**: 删除对应行，或改为 `# CONFIG_PACKAGE_插件名 is not set`
+- 提交修改后 Actions 自动按新配置重新编译，无需任何交互操作
 
-### 内置功能
+其他可自定义项:
 
-已内置以下软件包：
+| 文件/目录 | 用途 |
+| :--- | :--- |
+| [config/x86_64.config](config/x86_64.config) | 编译配置(插件/驱动/镜像格式/分区大小) |
+| [files/etc/uci-defaults/99-custom-settings](files/etc/uci-defaults/99-custom-settings) | 首次开机默认设置(LAN IP/登录密码/默认主题/时区) |
+| [scripts/diy-part1.sh](scripts/diy-part1.sh) | feeds 更新前的自定义修改(如软件源增删) |
+| [scripts/diy-part2.sh](scripts/diy-part2.sh) | 第三方插件按需拉取配置(增删第三方插件源) |
+| [.github/workflows/build-openwrt.yml](.github/workflows/build-openwrt.yml) | 编译工作流(源码仓库/分支等全局参数) |
 
-1. LuCI插件：  
-  [luci-app-adguardhome](https://github.com/chenmozhijin/luci-app-adguardhome) :AdGuardHome广告屏蔽工具的luci设置界面  
-  [luci-app-argon-config](https://github.com/jerrykuku/luci-app-argon-config):Argon 主题设置  
-  luci-app-cifs-mount：SMB/CIFS 网络挂载共享客户端  
-  [luci-app-diskman](https://github.com/lisaac/luci-app-diskman)：DiskMan 磁盘管理  
-  luci-app-fileassistant：文件助手  
-  luci-app-firewall：防火墙  
-  luci-app-netdata：[Netdata](https://github.com/netdata/netdata) 实时监控  
-  [luci-app-netspeedtest](https://github.com/muink/luci-app-netspeedtest)：网速测试  
-  luci-app-nlbwmon：网络带宽监视器
-  [luci-app-openclash](https://github.com/vernesong/OpenClash):可运行在 OpenWrt 上的 Clash 客户端  
-  luci-app-samba4：samba网络共享  
-  [luci-app-smartdns](https://github.com/pymumu/luci-app-smartdns)：SmartDNS 服务器  
-  [luci-app-socat](https://github.com/chenmozhijin/luci-app-socat)：Socat网络工具  
-  luci-app-ttyd：ttyd 终端  
-  [luci-app-turboacc](https://github.com/chenmozhijin/turboacc)：Turbo ACC 网络加速  
-  luci-app-upnp：通用即插即用（UPnP）  
-  luci-app-usb-printer：USB 打印服务器
-  [luci-app-wechatpush](https://github.com/tty228/luci-app-wechatpush)：微信推送  
-  luci-app-wol：网络唤醒  
-  luci-app-zerotier：ZeroTier虚拟局域网
-  luci-app-qbittorrent：qBittorrent-Enhanced-Edition的luci设置界面
-  luci-app-sqm：Smart Queue Management (SQM) QoS
-  luci-app-vlmcsd：VLMCSd KMS 激活工具
+## 第三方插件拉取规则
 
-1. 其他部分软件包：  
-  ethtool-full：网卡工具用于查询及设置网卡参数  
-  sudo：sudo命令支持  
-  htop：系统监控与进程管理软件
-  cfdisk：磁盘分区工具  
-  bc：一个命令行计算器  
-  coremark：cpu跑分测试  
-  pciutils：PCI 设备配置工具  
-  usbutils：USB 设备列出工具  
+遵循 **"仅补缺"** 原则：仅当 LEDE 源码及 feeds 中不存在对应软件包时，才从第三方仓库通过 `git sparse-checkout` **只克隆所需插件目录**(不完整拉取整个仓库)，节省编译耗时:
 
-1. LuCI主题：[Argon](https://github.com/jerrykuku/luci-theme-argon)
+| 软件包 | 第三方仓库 | 拉取目录 |
+| :--- | :--- | :--- |
+| luci-app-easytier | [EasyTier/luci-app-easytier](https://github.com/EasyTier/luci-app-easytier) | `luci-app-easytier` |
+| luci-app-ddnsto | [linkease/nas-packages-luci](https://github.com/linkease/nas-packages-luci) | `luci/luci-app-ddnsto` |
+| ddnsto | [linkease/nas-packages](https://github.com/linkease/nas-packages) | `network/services/ddnsto` |
+| appfilter / oaf | [destan19/OpenAppFilter](https://github.com/destan19/OpenAppFilter) | `open-app-filter` / `oaf` |
+| (备用源) smartdns / adguardhome / argon 系列等 | [kenzok8/openwrt-packages](https://github.com/kenzok8/openwrt-packages) | 对应同名目录 |
 
-    > + 以上软件包都在生成在Releases的package.zip文件中，可安装使用。
+> 说明: SmartDNS、AdGuardHome、Mwan3、Turbo ACC、带宽监控、Argon 主题等当前均由 LEDE feeds 自带，kenzok8 仓库仅作为 LEDE 未来移除对应包时的备用源(自动按需启用，无需修改脚本)。
+> OFA 应用过滤的 LuCI 界面(luci-app-appfilter)由 LEDE feeds 提供，但其用户态后端(appfilter)与内核模块(oaf)LEDE 缺失，故从 OFA 官方仓库按需拉取补齐。
 
-2. 网卡驱动：  
-  kmod-8139cp  
-  kmod-8139too  
-  kmod-alx  
-  kmod-amazon-ena  
-  kmod-amd-xgbe  
-  kmod-bnx2  
-  kmod-bnx2x  
-  kmod-e1000  
-  kmod-e1000e  
-  kmod-forcedeth  
-  kmod-i40e  
-  kmod-iavf  
-  kmod-igb  
-  kmod-igbvf  
-  kmod-igc  
-  kmod-ixgbe  
-  kmod-libphy  
-  kmod-macvlan  
-  kmod-mii  
-  kmod-mlx4-core  
-  kmod-mlx5-core  
-  kmod-net-selftests  
-  kmod-pcnet32  
-  kmod-phy-ax88796b  
-  kmod-phy-realtek  
-  kmod-phy-smsc  
-  [kmod-r8125](https://github.com/sbwml/package_kernel_r8125)  
-  kmod-r8152  
-  kmod-r8168  
-  kmod-tg3  
-  kmod-tulip  
-  kmod-via-velocity  
-  kmod-vmxnet3
+## 工作流说明
 
-### 固件预览
+[.github/workflows/build-openwrt.yml](.github/workflows/build-openwrt.yml) 执行流程(每一步均详细注释):
 
-#### 概览
-
-![概览](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/1.webp)
-
-#### 新版netdata实时监控
-
-![实时监控](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/2.webp)
-
-#### DiskMan 磁盘管理
-
-![磁盘管理](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/3.webp)
-
-#### Argon 主题设置
-
-![Argon 主题设置](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/4.webp)
-
-#### AdGuardHome广告屏蔽工具
-
-![luci-app-adguardhome](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/5.webp)
-![AdGuardHome](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/11.webp)
-
-#### SmartDNS DNS服务器
-
-![SmartDNS](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/6.webp)
-
-#### 文件助手
-
-![文件助手](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/7.webp)
-
-#### Socat网络工具
-
-![概览](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/8.webp)
-
-#### Turbo ACC 网络加速
-
-![概览](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/9.webp)
-
-#### ZeroTier虚拟局域网
-
-![概览](https://raw.githubusercontent.com/chenmozhijin/OpenWrt-K/main/img/10.webp)
+1. **磁盘扩容**: 清理 Runner 预装软件(Android SDK/.NET 等)，释放 20GB+ 空间，规避磁盘不足导致编译失败
+2. **源码缓存**: `actions/cache` 缓存 LEDE 源码(.git)与 feeds，命中后增量更新，减少重复拉取耗时
+3. **dl 缓存**: 缓存源码包下载目录(dl)，跳过大部分软件包下载
+4. **feeds 依赖处理**: 编译前执行 `feeds update -a && feeds install -a`
+5. **按需拉取第三方插件**(见上文拉取规则)
+6. **配置展开**: 载入 `config/x86_64.config` 后 `make defconfig` 非交互展开依赖
+7. **自动编译**: 下载校验 → 多线程编译，**任一步骤出错立即终止工作流**
+8. **自动发布**: 生成含 LAN IP、账号密码、内核版本、固件版本、插件清单(每行一个)的发布说明，自动创建 GitHub Releases 并上传 IMG 镜像
 
 ## 感谢
 
- 感谢以下项目与各位制作软件包大佬的付出
+- [coolsnowwolf/lede](https://github.com/coolsnowwolf/lede) — LEDE 源码
+- [kenzok8/openwrt-packages](https://github.com/kenzok8/openwrt-packages) — 第三方插件仓库(备用源)
+- [EasyTier/luci-app-easytier](https://github.com/EasyTier/luci-app-easytier) — EasyTier LuCI 界面
+- [linkease/nas-packages-luci](https://github.com/linkease/nas-packages-luci) / [linkease/nas-packages](https://github.com/linkease/nas-packages) — DDNSTO 相关插件
+- [destan19/OpenAppFilter](https://github.com/destan19/OpenAppFilter) — OFA 应用过滤
+- [jerrykuku/luci-theme-argon](https://github.com/jerrykuku/luci-theme-argon) — Argon 主题
+- [softprops/action-gh-release](https://github.com/softprops/action-gh-release) — Release 发布动作
+- [GitHub Actions](https://github.com/features/actions) — 云编译平台
 
-+ [openwrt/openwrt](https://github.com/openwrt/openwrt/)
-+ [coolsnowwolf/lede](https://github.com/coolsnowwolf/lede)
-+ [Lienol/openwrt](https://github.com/Lienol/openwrt)
-+ [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt/)
-+ [wongsyrone/lede-1](https://github.com/wongsyrone/lede-1)
-+ [Github Actions](https://github.com/features/actions)
-+ [softprops/action-gh-release](https://github.com/ncipollo/release-action)
-+ [dev-drprasad/delete-older-releases](https://github.com/mknejp/delete-release-assets)
+## 许可
+
+[MIT](LICENSE)

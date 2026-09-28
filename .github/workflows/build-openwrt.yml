@@ -82,6 +82,9 @@ jobs:
       # ---------------------------------------------------------------------
       # 步骤3: 安装编译依赖
       # 目的: 安装 LEDE 官方要求的全部编译工具链与依赖库(Ubuntu 22.04)
+      # 注意: 包名均为 Ubuntu 22.04 官方源中的正确名称
+      #       (gnutls-dev→libgnutls28-dev, mkisofs→genisoimage,
+      #        zlib-dev/libz-dev→zlib1g-dev, 均为跨发行版命名差异)
       # ---------------------------------------------------------------------
       - name: 3. 安装编译依赖
         run: |
@@ -89,14 +92,14 @@ jobs:
           sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint \
             binutils bison build-essential ccache clang cmake cpio curl \
             device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
-            g++-multilib git gnutls-dev gperf haveged help2man intltool \
+            g++-multilib git libgnutls28-dev gperf haveged help2man intltool \
             lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev \
             libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
-            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm \
-            mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 \
+            libreadline-dev libssl-dev libtool libyaml-dev lld llvm \
+            genisoimage msmtp nano ninja-build p7zip-full patch pkgconf python3 \
             python3-pip python3-ply python3-docutils python3-setuptools \
             qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo \
-            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib-dev zstd
+            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
 
       # ---------------------------------------------------------------------
       # 步骤4: 生成本次编译的缓存标识

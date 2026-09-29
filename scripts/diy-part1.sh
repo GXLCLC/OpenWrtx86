@@ -2,30 +2,32 @@
 # ============================================================================
 # diy-part1.sh —— feeds 更新前的自定义修改
 #
-# 执行时机: LEDE 源码拉取完成后、feeds update 之前(工作流步骤8)
-# 默认工作目录: 仓库根目录(LEDE 源码位于其下的 openwrt/ 目录)
+# 执行时机: ImmortalWrt 源码拉取完成后、feeds update 之前
+# 默认工作目录: 仓库根目录(ImmortalWrt 源码位于其下的 openwrt/ 目录)
+#
+# 说明: ImmortalWrt 上游 feeds 干净可靠(不含代理类软件源),
+#       本脚本当前无需任何修改动作, 仅打印 feeds 配置供日志核对;
+#       后续如需在 feeds 更新前自定义源码/软件源, 在此处添加即可
 # ============================================================================
 
 # 任何命令出错立即终止脚本(与工作流"错误即终止"策略一致)
 set -e
 
-# LEDE 源码目录(可通过环境变量覆盖, 便于本地测试)
+# ImmortalWrt 源码目录(可通过环境变量覆盖, 便于本地测试)
 OPENWRT_DIR="${OPENWRT_DIR:-openwrt}"
 
 # ----------------------------------------------------------------------------
-# 1. 禁用 LEDE 自带的代理类软件源(helloworld)
-# 说明: LEDE 的 feeds.conf.default 默认启用了 helloworld(科学上网源),
-#       本仓库不集成任何代理类插件, 注释掉该行后:
-#       ① 编译时完全跳过该源的克隆与安装, 节省编译耗时;
-#       ② feeds 中不会出现任何代理类软件包
+# 打印当前 feeds 软件源配置(供编译日志核对)
+# ImmortalWrt master 默认 feeds:
+#   packages/luci —— immortalwrt 官方 fork
+#   routing/telephony/video —— openwrt 官方
 # ----------------------------------------------------------------------------
-sed -i 's|^src-git helloworld|#src-git helloworld|' "$OPENWRT_DIR/feeds.conf.default"
-
-echo "[diy-part1] 已禁用代理类软件源(helloworld), 当前 feeds 配置如下:"
+echo "[diy-part1] 当前 feeds 软件源配置:"
 grep -v '^\s*#' "$OPENWRT_DIR/feeds.conf.default" || true
 
 # ----------------------------------------------------------------------------
-# 2. 此处可继续添加其他 feeds 更新前的自定义修改, 例如:
-#    - 追加自定义软件源: echo "src-git xxx https://github.com/xxx/xxx" >> feeds.conf.default
-#    - 修改源码默认配置等
+# 此处可添加 feeds 更新前的自定义修改, 例如:
+#   - 追加自定义软件源:
+#     echo "src-git xxx https://github.com/xxx/xxx" >> "$OPENWRT_DIR/feeds.conf.default"
+#   - 修改源码默认参数等
 # ----------------------------------------------------------------------------

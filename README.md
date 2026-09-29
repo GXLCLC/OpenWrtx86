@@ -45,6 +45,8 @@
 
 ### 自定义固件（增减插件）
 
+> 推送对 `config/`、`scripts/`、`.github/workflows/` 的修改至 main 分支同样会自动触发编译。
+
 编辑仓库内的 [config/x86_64.config](config/x86_64.config):
 
 - **增加插件**: 添加一行 `CONFIG_PACKAGE_插件名=y`
